@@ -14,8 +14,17 @@ import os
 class DataStorage:
     """Excel数据存储管理"""
     
-    # 数据目录：使用用户文档目录/A股统计数据，确保打包后可读写
-    DATA_DIR = Path.home() / "Documents" / "A股统计数据"
+    import sys
+
+    # 数据目录：优先使用程序所在目录（data），确保可读写且路径正确
+    if getattr(sys, 'frozen', False):
+        # 如果是打包后的 exe
+        BASE_DIR = Path(sys.executable).parent
+    else:
+        # 如果是源码运行
+        BASE_DIR = Path(__file__).parent
+        
+    DATA_DIR = BASE_DIR / "data"
     
     # Excel文件名格式
     FILE_PREFIX = "market_stats"
