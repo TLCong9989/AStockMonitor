@@ -222,8 +222,6 @@ class MarketStatsPanel:
         """适配 macOS 的按钮样式"""
         if self.is_macos:
             # macOS 下 bg 属性可能失效，使用 highlightbackground
-            # 注意：macOS下要想按钮完全变色比较难，highlightbackground 只改变边框
-            # 另一种方法是去掉 relief，或者接受系统样式
             try:
                 btn.configure(highlightbackground=bg_color, fg=text_color)
             except:
@@ -369,12 +367,16 @@ class MarketStatsPanel:
         self.stats_var.set(f"上涨: {stats['up_count']} | 下跌: {stats['down_count']} | "
                           f"涨停: {stats['limit_up']} | 跌停: {stats['limit_down']}")
         
-    def update_charts_from_memory(self):
-        """刷新图表"""
-        if not self.time_labels:
+    def _draw_charts(self, x_labels, data_provider):
+        """通用绘图方法
+        Args:
+            x_labels: X轴标签列表
+            data_provider: 数据提供函数，接收(key)返回数据列表
+        """
+        if not x_labels:
             return
             
-        x = list(range(len(self.time_labels)))
+        x = list(range(len(x_labels)))
         t = self.theme
         
         chart_config = [
@@ -396,20 +398,21 @@ class MarketStatsPanel:
                 spine.set_color(t['chart_line'])
             ax.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
             
-            up_data = list(self.data[up_key])
-            down_data = list(self.data[down_key])
+            # 获取数据
+            up_data = list(data_provider(up_key))
+            down_data = list(data_provider(down_key))
             
-            if up_data:
+            if up_data and len(up_data) == len(x):
                 ax.plot(x, up_data, color=self.COLOR_UP, linewidth=2,
                        label=f'{up_label}: {up_data[-1]}', marker='o', markersize=3)
                 ax.plot(x, down_data, color=self.COLOR_DOWN, linewidth=2,
                        label=f'{down_label}: {down_data[-1]}', marker='o', markersize=3)
                 
-            # X轴
+            # X轴标签
             if x:
                 step = max(1, len(x) // 10)
                 ax.set_xticks(x[::step])
-                ax.set_xticklabels(list(self.time_labels)[::step], 
+                ax.set_xticklabels(list(x_labels)[::step], 
                                  rotation=45, ha='right', fontsize=8)
             
             ax.legend(loc='upper left', fontsize=9,
@@ -417,6 +420,12 @@ class MarketStatsPanel:
                      labelcolor=t['text'])
         
         self.canvas.draw()
+
+    def update_charts_from_memory(self):
+        """刷新实时图表"""
+        if not self.time_labels:
+            return
+        self._draw_charts(self.time_labels, lambda k: self.data[k])
 
     def load_today_data(self):
         """加载今日数据"""
@@ -455,14 +464,30 @@ class MarketStatsPanel:
             self.load_and_display(self.storage.get_month_data(), "本月")
             
     def load_and_display(self, df, label):
+        """显示历史数据"""
         if df is None or len(df) == 0:
             self.status_var.set(f"{label}暂无数据")
             for ax in self.axes: ax.clear()
             self.canvas.draw()
             return
-        # ... (这里逻辑可以复用 update_charts_from_memory，为简化省略重复代码)
-        # 实际应该把画图逻辑抽离，这里简单处理
-        pass 
+            
+        # 准备X轴标签：如果有日期变化则显示日期+时间，否则只显示时间
+        dates = df['date'].astype(str).unique()
+        if len(dates) > 1:
+            # 跨天显示：MM-DD HH:MM
+            x_labels = (df['date'].astype(str).str[5:] + ' ' + df['time'].str[:5]).tolist()
+        else:
+            # 单天显示：HH:MM
+            x_labels = df['time'].str[:5].tolist()
+            
+        # 绘图
+        self._draw_charts(x_labels, lambda k: df[k].tolist())
+        
+        # 更新状态栏摘要
+        summary = self.storage.get_stats_summary(df)
+        self.status_var.set(f"{label}数据 | 共 {len(df)} 条记录 | {summary.get('date_range', '')}")
+        self.stats_var.set(f"上涨均值: {summary.get('up_count_avg', 0)} | "
+                          f"下跌均值: {summary.get('down_count_avg', 0)}") 
 
 
 def main():
