@@ -26,15 +26,7 @@ jobs:
         pip install pyinstaller
 
     - name: Build EXE
-      run: |
-        # 增加 hidden-import 确保所有依赖都被打包
-        pyinstaller -F -w --name "AStockMonitor" ^
-          --hidden-import=tkinter ^
-          --hidden-import=pandas ^
-          --hidden-import=matplotlib ^
-          --hidden-import=openpyxl.cell._writer ^
-          --hidden-import=PIL._tkinter_finder ^
-          main.py
+      run: pyinstaller -F -w --name "AStockMonitor" --hidden-import=tkinter --hidden-import=pandas --hidden-import=matplotlib --hidden-import=openpyxl.cell._writer --hidden-import=PIL._tkinter_finder main.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
