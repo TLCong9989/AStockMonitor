@@ -370,13 +370,34 @@ class MarketStatsPanel:
     def _draw_charts(self, x_labels, data_provider):
         """通用绘图方法
         Args:
-            x_labels: X轴标签列表
+            x_labels: X轴标签列表（时间字符串）
             data_provider: 数据提供函数，接收(key)返回数据列表
         """
         if not x_labels:
             return
             
-        x = list(range(len(x_labels)))
+        # 1. 过滤交易时间（仅绘图时过滤）
+        valid_indices = []
+        filtered_x_labels = []
+        
+        for i, t_str in enumerate(x_labels):
+            # 提取时间部分 HH:MM
+            # 如果包含日期，格式为 YYYY-MM-DD HH:MM
+            try:
+                time_part = t_str.split(' ')[-1] if ' ' in t_str else t_str
+                # 简单字符串比较过滤 (09:00-11:30, 13:00-15:00)
+                if ("09:00" <= time_part <= "11:30") or ("13:00" <= time_part <= "15:00"):
+                    valid_indices.append(i)
+                    filtered_x_labels.append(t_str)
+            except:
+                # 解析失败则保留
+                valid_indices.append(i)
+                filtered_x_labels.append(t_str)
+        
+        if not valid_indices:
+            return
+
+        x = list(range(len(filtered_x_labels)))
         t = self.theme
         
         chart_config = [
@@ -398,9 +419,13 @@ class MarketStatsPanel:
                 spine.set_color(t['chart_line'])
             ax.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
             
-            # 获取数据
-            up_data = list(data_provider(up_key))
-            down_data = list(data_provider(down_key))
+            # 获取原始数据
+            raw_up = list(data_provider(up_key))
+            raw_down = list(data_provider(down_key))
+            
+            # 2. 根据有效索引过滤数据 (确保X轴Y轴对齐)
+            up_data = [raw_up[i] for i in valid_indices if i < len(raw_up)]
+            down_data = [raw_down[i] for i in valid_indices if i < len(raw_down)]
             
             if up_data and len(up_data) == len(x):
                 ax.plot(x, up_data, color=self.COLOR_UP, linewidth=2,
@@ -412,7 +437,7 @@ class MarketStatsPanel:
             if x:
                 step = max(1, len(x) // 10)
                 ax.set_xticks(x[::step])
-                ax.set_xticklabels(list(x_labels)[::step], 
+                ax.set_xticklabels(list(filtered_x_labels)[::step], 
                                  rotation=45, ha='right', fontsize=8)
             
             ax.legend(loc='upper left', fontsize=9,
