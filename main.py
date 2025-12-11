@@ -350,22 +350,29 @@ class MarketStatsPanel:
                     if k in stats:
                         self.data[k].append(stats[k])
                 
-                # UI更新
-                if self.current_view == 'realtime':
-                    self.root.after(0, lambda s=stats: self.update_ui_realtime(s))
+                # UI更新：无论当前是什么视图，都触发刷新
+                self.root.after(0, lambda s=stats: self.update_ui_unified(s))
             else:
                  self.root.after(0, lambda: self.status_var.set("采集失败: 接口无响应"))
                     
         except Exception as e:
             self.root.after(0, lambda: self.status_var.set(f"采集出错: {e}"))
             
-    def update_ui_realtime(self, stats):
-        """更新实时界面"""
-        self.update_charts_from_memory()
-        self.status_var.set(f"正在采集... | 数据点: {len(self.time_labels)} | "
-                           f"更新: {stats['time']}")
+    def update_ui_unified(self, stats):
+        """统一更新UI（图表+状态栏）"""
+        self.refresh_current_view()
+        
+        # 更新状态栏实时数值
+        if self.current_view == 'realtime':
+            self.status_var.set(f"正在采集... | 数据点: {len(self.time_labels)} | 更新: {stats['time']}")
+            
+        # 始终更新右下角的最新统计
         self.stats_var.set(f"上涨: {stats['up_count']} | 下跌: {stats['down_count']} | "
                           f"涨停: {stats['limit_up']} | 跌停: {stats['limit_down']}")
+
+    def update_ui_realtime(self, stats):
+        """(已弃用，保留兼容性)"""
+        self.update_ui_unified(stats)
         
     def _draw_charts(self, x_labels, data_provider):
         """通用绘图方法
