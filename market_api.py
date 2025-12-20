@@ -56,9 +56,54 @@ class MarketStatsAPI:
     @classmethod
     def get_market_stats(cls) -> Optional[Dict]:
         """
-        获取A股全市场涨跌统计
-        使用腾讯接口批量获取数据
+        获取A股全市场涨跌统计 + 上证指数
         """
+        try:
+            # 并行获取: 全市场统计 + 上证指数
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_stats = executor.submit(cls._get_all_stocks_stats)
+                future_index = executor.submit(cls._get_shanghai_index)
+                
+                stats = future_stats.result()
+                index_data = future_index.result()
+                
+                if stats and index_data:
+                    stats.update(index_data)
+                    return stats
+            return None
+            
+        except Exception as e:
+            print(f"获取市场统计失败: {e}")
+            return None
+
+    @classmethod
+    def _get_shanghai_index(cls) -> Dict:
+        """获取上证指数数据"""
+        try:
+            url = f"{cls.TX_URL}sh000001"
+            resp = requests.get(url, timeout=5)
+            # v_sh000001="1~上证指数~000001~3031.23~3027.33~3027.33~..."
+            # 3:当前, 4:昨收, 31:涨跌额, 32:涨跌幅
+            data = resp.text
+            match = re.search(r'v_sh000001="([^"]*)"', data)
+            if match:
+                fields = match.group(1).split('~')
+                if len(fields) > 37:
+                    return {
+                        'sh_price': float(fields[3]),
+                        'sh_pre_close': float(fields[4]),
+                        'sh_change': float(fields[31]),
+                        'sh_pct': float(fields[32]),
+                        'sh_amount': float(fields[37])  # 成交额（万）
+                    }
+            return {}
+        except Exception as e:
+            print(f"获取上证指数失败: {e}")
+            return {}
+
+    @classmethod
+    def _get_all_stocks_stats(cls) -> Optional[Dict]:
+        """获取全市场个股统计（原逻辑）"""
         try:
             all_codes = cls.get_all_stock_codes()
             
@@ -93,9 +138,8 @@ class MarketStatsAPI:
                                 stats[key] += batch_stats.get(key, 0)
             
             return stats
-            
         except Exception as e:
-            print(f"获取市场统计失败: {e}")
+            print(f"统计全市场失败: {e}")
             return None
     
     @classmethod

@@ -85,6 +85,8 @@ class MarketStatsPanel:
         self.max_points = 100
         self.time_labels = deque(maxlen=self.max_points)
         self.data = {
+            'sh_index': deque(maxlen=self.max_points),  # 上证指数
+            'sh_amount': deque(maxlen=self.max_points), # 新增：成交额
             'up_count': deque(maxlen=self.max_points),
             'down_count': deque(maxlen=self.max_points),
             'up_3pct': deque(maxlen=self.max_points),
@@ -202,18 +204,34 @@ class MarketStatsPanel:
         self.stats_label.pack(side=tk.RIGHT, padx=15, pady=10)
         
     def setup_charts(self):
-        """设置图表"""
-        self.fig = Figure(figsize=(13, 8))
-        self.fig.subplots_adjust(hspace=0.35, wspace=0.2, 
-                                  left=0.06, right=0.96, top=0.92, bottom=0.08)
+        """设置图表 - 3行布局 (含上证指数+成交量)"""
+        self.fig = Figure(figsize=(13, 10))
+        
+        # 主布局：3行2列
+        gs = self.fig.add_gridspec(3, 2, height_ratios=[1.4, 1, 1], hspace=0.4, wspace=0.2,
+                                  left=0.06, right=0.96, top=0.94, bottom=0.06)
         
         self.axes = []
-        self.titles = ['上涨/下跌 家数', '涨幅>5% / 跌幅>5%',
+        self.titles = ['上证指数', '上涨/下跌 家数', '涨幅>5% / 跌幅>5%',
                        '涨幅>3% / 跌幅>3%', '涨停 / 跌停']
         
-        for i in range(4):
-            ax = self.fig.add_subplot(2, 2, i + 1)
-            self.axes.append(ax)
+        # --- 1. 上证指数区域 (Row 0, 跨2列) ---
+        # 使用 subgridspec 将该区域分为上下两部分: 价格(70%) + 成交量(30%)
+        gs_sh = gs[0, :].subgridspec(2, 1, height_ratios=[3, 1], hspace=0.08)
+        
+        ax_sh_price = self.fig.add_subplot(gs_sh[0])
+        ax_sh_vol = self.fig.add_subplot(gs_sh[1], sharex=ax_sh_price)
+        
+        # 保存为元组，供 _draw_charts 使用
+        self.axes.append((ax_sh_price, ax_sh_vol))
+        
+        # --- 2. 其他4个图表 ---
+        # 第1行
+        self.axes.append(self.fig.add_subplot(gs[1, 0]))
+        self.axes.append(self.fig.add_subplot(gs[1, 1]))
+        # 第2行
+        self.axes.append(self.fig.add_subplot(gs[2, 0]))
+        self.axes.append(self.fig.add_subplot(gs[2, 1]))
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.chart_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
@@ -272,20 +290,52 @@ class MarketStatsPanel:
         
         # 图表样式
         self.fig.patch.set_facecolor(t['bg'])
-        for ax, title in zip(self.axes, self.titles):
-            ax.set_facecolor(t['chart_bg'])
-            ax.set_title(title, color=t['fg'], fontsize=12, fontweight='bold')
-            ax.tick_params(colors=t['chart_text'], labelsize=9)
-            for spine in ax.spines.values():
-                spine.set_color(t['chart_line'])
-            ax.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+        
+        # 处理 self.axes 中的元素（可能是单个 ax，也可能是 ax 的元组）
+        # 我们的 titles 对应的是逻辑图表，需要小心对应
+        
+        # 1. 处理上证指数 (axes[0] 是元组)
+        if self.axes and isinstance(self.axes[0], tuple):
+            ax_price, ax_vol = self.axes[0]
+            title = self.titles[0]
             
-            # 更新图例文字颜色
-            legend = ax.get_legend()
-            if legend:
-                plt.setp(legend.get_texts(), color=t['text'])
-                legend.get_frame().set_facecolor(t['chart_bg'])
-                legend.get_frame().set_edgecolor(t['chart_line'])
+            # 价格图
+            ax_price.set_facecolor(t['chart_bg'])
+            ax_price.set_title(title, color=t['fg'], fontsize=12, fontweight='bold')
+            ax_price.tick_params(colors=t['chart_text'], labelsize=9)
+            for spine in ax_price.spines.values(): spine.set_color(t['chart_line'])
+            ax_price.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+            
+            # 成交量图
+            ax_vol.set_facecolor(t['chart_bg'])
+            ax_vol.tick_params(colors=t['chart_text'], labelsize=8)
+            for spine in ax_vol.spines.values(): spine.set_color(t['chart_line'])
+            ax_vol.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+            
+            # 更新图例
+            for ax in [ax_price, ax_vol]:
+                legend = ax.get_legend()
+                if legend:
+                    plt.setp(legend.get_texts(), color=t['text'])
+                    legend.get_frame().set_facecolor(t['chart_bg'])
+                    legend.get_frame().set_edgecolor(t['chart_line'])
+
+        # 2. 处理其他图表 (axes[1:] 对应 titles[1:])
+        for i, ax in enumerate(self.axes[1:]):
+            if i + 1 < len(self.titles):
+                title = self.titles[i + 1]
+                ax.set_facecolor(t['chart_bg'])
+                ax.set_title(title, color=t['fg'], fontsize=12, fontweight='bold')
+                ax.tick_params(colors=t['chart_text'], labelsize=9)
+                for spine in ax.spines.values():
+                    spine.set_color(t['chart_line'])
+                ax.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+                
+                legend = ax.get_legend()
+                if legend:
+                    plt.setp(legend.get_texts(), color=t['text'])
+                    legend.get_frame().set_facecolor(t['chart_bg'])
+                    legend.get_frame().set_edgecolor(t['chart_line'])
         
         self.canvas.draw()
         
@@ -362,9 +412,9 @@ class MarketStatsPanel:
         """统一更新UI（图表+状态栏）"""
         self.refresh_current_view()
         
-        # 更新状态栏实时数值
-        if self.current_view == 'realtime':
-            self.status_var.set(f"正在采集... | 数据点: {len(self.time_labels)} | 更新: {stats['time']}")
+        # 始终更新状态栏，让用户知道数据在动
+        view_name = {"realtime": "实时", "today": "今日", "week": "本周", "month": "本月"}.get(self.current_view, "")
+        self.status_var.set(f"[{view_name}] 正在采集... | 更新: {stats['time']} | 总数: {stats['total']}")
             
         # 始终更新右下角的最新统计
         self.stats_var.set(f"上涨: {stats['up_count']} | 下跌: {stats['down_count']} | "
@@ -407,11 +457,78 @@ class MarketStatsPanel:
         x = list(range(len(filtered_x_labels)))
         t = self.theme
         
+        # --- 1. 绘制上证指数 (ax_idx=0) ---
+        ax_sh_price, ax_sh_vol = self.axes[0]
+        ax_sh_price.clear()
+        ax_sh_vol.clear()
+        
+        # 样式设置 - 价格图
+        ax_sh_price.set_facecolor(t['chart_bg'])
+        ax_sh_price.set_title(self.titles[0], color=t['fg'], fontsize=12, fontweight='bold')
+        ax_sh_price.tick_params(colors=t['chart_text'], labelsize=9)
+        for spine in ax_sh_price.spines.values(): spine.set_color(t['chart_line'])
+        ax_sh_price.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+        plt.setp(ax_sh_price.get_xticklabels(), visible=False) # 隐藏X轴标签
+        
+        # 样式设置 - 成交量图
+        ax_sh_vol.set_facecolor(t['chart_bg'])
+        ax_sh_vol.tick_params(colors=t['chart_text'], labelsize=8)
+        for spine in ax_sh_vol.spines.values(): spine.set_color(t['chart_line'])
+        ax_sh_vol.grid(True, linestyle='--', alpha=0.3, color=t['chart_line'])
+        
+        # 获取数据
+        raw_sh = list(data_provider('sh_index'))
+        raw_amt = list(data_provider('sh_amount'))
+        
+        sh_data = [raw_sh[i] for i in valid_indices if i < len(raw_sh)]
+        amt_data = [raw_amt[i] for i in valid_indices if i < len(raw_amt)]
+        
+        if sh_data and len(sh_data) == len(x):
+            # 1. 价格线
+            base_val = sh_data[0] if sh_data else 0
+            color = self.COLOR_UP if sh_data[-1] >= base_val else self.COLOR_DOWN
+            
+            ax_sh_price.plot(x, sh_data, color=color, linewidth=1.5,
+                      label=f'指数: {sh_data[-1]:.2f}', marker='o', markersize=2)
+            ax_sh_price.fill_between(x, sh_data, min(sh_data)*0.998, color=color, alpha=0.1)
+            
+            ax_sh_price.legend(loc='upper left', fontsize=9,
+                        facecolor=t['chart_bg'], edgecolor=t['chart_line'], labelcolor=t['text'])
+            
+            # 2. 成交额柱状图
+            if amt_data and len(amt_data) == len(sh_data):
+                # 颜色：根据每分钟涨跌决定红绿
+                vol_colors = []
+                for i in range(len(sh_data)):
+                    if i == 0:
+                        vol_colors.append(self.COLOR_UP)
+                    else:
+                        vol_colors.append(self.COLOR_UP if sh_data[i] >= sh_data[i-1] else self.COLOR_DOWN)
+                
+                # 绘制柱状图
+                ax_sh_vol.bar(x, amt_data, color=vol_colors, width=1.0)
+                
+                # 显示最新成交额（单位：亿）
+                latest_amt = amt_data[-1] / 10000  # 万 -> 亿
+                ax_sh_vol.text(0.01, 0.85, f'成交: {latest_amt:.1f}亿', 
+                              transform=ax_sh_vol.transAxes, color=t['text'], fontsize=9)
+
+        # 设置X轴 (作用于下方的成交量图)
+        def set_x_axis(ax):
+            if x:
+                step = max(1, len(x) // 12)
+                ax.set_xticks(x[::step])
+                ax.set_xticklabels(list(filtered_x_labels)[::step], 
+                                 rotation=45, ha='right', fontsize=8)
+
+        set_x_axis(ax_sh_vol)
+
+        # --- 2. 绘制其他4个指标图表 (ax_idx=1~4) ---
         chart_config = [
-            (0, 'up_count', 'down_count', '上涨', '下跌', '上涨/下跌 家数'),
-            (1, 'up_5pct', 'down_5pct', '涨>5%', '跌>5%', '涨幅>5% / 跌幅>5%'),
-            (2, 'up_3pct', 'down_3pct', '涨>3%', '跌>3%', '涨幅>3% / 跌幅>3%'),
-            (3, 'limit_up', 'limit_down', '涨停', '跌停', '涨停 / 跌停'),
+            (1, 'up_count', 'down_count', '上涨', '下跌', '上涨/下跌 家数'),
+            (2, 'up_5pct', 'down_5pct', '涨>5%', '跌>5%', '涨幅>5% / 跌幅>5%'),
+            (3, 'up_3pct', 'down_3pct', '涨>3%', '跌>3%', '涨幅>3% / 跌幅>3%'),
+            (4, 'limit_up', 'limit_down', '涨停', '跌停', '涨停 / 跌停'),
         ]
         
         for ax_idx, up_key, down_key, up_label, down_label, title in chart_config:
@@ -430,7 +547,7 @@ class MarketStatsPanel:
             raw_up = list(data_provider(up_key))
             raw_down = list(data_provider(down_key))
             
-            # 2. 根据有效索引过滤数据 (确保X轴Y轴对齐)
+            # 过滤数据
             up_data = [raw_up[i] for i in valid_indices if i < len(raw_up)]
             down_data = [raw_down[i] for i in valid_indices if i < len(raw_down)]
             
@@ -439,13 +556,8 @@ class MarketStatsPanel:
                        label=f'{up_label}: {up_data[-1]}', marker='o', markersize=3)
                 ax.plot(x, down_data, color=self.COLOR_DOWN, linewidth=2,
                        label=f'{down_label}: {down_data[-1]}', marker='o', markersize=3)
-                
-            # X轴标签
-            if x:
-                step = max(1, len(x) // 10)
-                ax.set_xticks(x[::step])
-                ax.set_xticklabels(list(filtered_x_labels)[::step], 
-                                 rotation=45, ha='right', fontsize=8)
+            
+            set_x_axis(ax)
             
             ax.legend(loc='upper left', fontsize=9,
                      facecolor=t['chart_bg'], edgecolor=t['chart_line'],
@@ -471,6 +583,9 @@ class MarketStatsPanel:
                 for k in self.data:
                     if k in row:
                         self.data[k].append(row[k])
+                    else:
+                        # 兼容旧数据缺失字段，补0
+                        self.data[k].append(0)
             self.update_charts_from_memory()
             
     def on_view_change(self):
@@ -513,7 +628,12 @@ class MarketStatsPanel:
             x_labels = df['time'].str[:5].tolist()
             
         # 绘图
-        self._draw_charts(x_labels, lambda k: df[k].tolist())
+        def get_data_safe(k):
+            if k in df:
+                return df[k].tolist()
+            return []
+            
+        self._draw_charts(x_labels, get_data_safe)
         
         # 更新状态栏摘要
         summary = self.storage.get_stats_summary(df)

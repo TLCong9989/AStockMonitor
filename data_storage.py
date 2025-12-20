@@ -44,6 +44,10 @@ class DataStorage:
         'down_5pct',     # 跌幅>5%
         'limit_up',      # 涨停
         'limit_down',    # 跌停
+        'sh_price',      # 上证指数
+        'sh_pre_close',  # 上证昨收
+        'sh_change',     # 上证涨跌额
+        'sh_pct',        # 上证涨跌幅
     ]
     
     def __init__(self):
@@ -86,6 +90,10 @@ class DataStorage:
                 'down_5pct': stats.get('down_5pct', 0),
                 'limit_up': stats.get('limit_up', 0),
                 'limit_down': stats.get('limit_down', 0),
+                'sh_price': stats.get('sh_price', 0.0),
+                'sh_pre_close': stats.get('sh_pre_close', 0.0),
+                'sh_change': stats.get('sh_change', 0.0),
+                'sh_pct': stats.get('sh_pct', 0.0),
             }
             
             # 读取或创建DataFrame
